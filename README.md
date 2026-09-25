@@ -69,18 +69,20 @@ Respuesta:
 
 ### 2. Consultar blueprints (requiere scope `blueprints.read`)
 ```
-GET http://localhost:8080/api/blueprints
+GET http://localhost:8080/api/v1/blueprints
 Authorization: Bearer <ACCESS_TOKEN>
 ```
 
 ### 3. Crear blueprint (requiere scope `blueprints.write`)
 ```
-POST http://localhost:8080/api/blueprints
+POST http://localhost:8080/api/v1/blueprints
 Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 
 {
-  "name": "Nuevo Plano"
+  "author": "samuel",
+  "name": "office",
+  "points": [{"x": 1, "y": 1}, {"x": 2, "y": 2}]
 }
 ```
 
@@ -98,9 +100,16 @@ Content-Type: application/json
 ## Estructura del proyecto
 ```
 src/main/java/co/edu/eci/blueprints/
-  ├── api/BlueprintController.java       # Endpoints protegidos
+  ├── api/BlueprintsAPIController.java   # Endpoints protegidos del P1 (/api/v1/blueprints)
+  ├── api/GlobalExceptionHandler.java    # Traducción de errores a ApiResponse
   ├── auth/AuthController.java           # Login didáctico para emitir tokens
   ├── config/OpenApiConfig.java          # Configuración Swagger + JWT
+  ├── config/PostgresDataSourceConfig.java # DataSource (perfil "postgres")
+  ├── dto/                               # ApiResponse, NewBlueprintRequest
+  ├── filters/                           # Identity, Redundancy, Undersampling (por perfiles)
+  ├── model/                             # Blueprint, Point
+  ├── persistence/                       # In-memory (default) y PostgreSQL (JSONB)
+  ├── services/BlueprintsServices.java
   └── security/
        ├── SecurityConfig.java
        ├── MethodSecurityConfig.java
@@ -108,7 +117,9 @@ src/main/java/co/edu/eci/blueprints/
        ├── InMemoryUserService.java
        └── RsaKeyProperties.java
 src/main/resources/
-  └── application.yml
+  ├── application.yml
+  ├── application-postgres.properties
+  └── schema.sql
 ```
 
 ---
@@ -160,10 +171,7 @@ Con esto, un token que solo tenga el scope de lectura puede consultar planos per
 
 ### Actividad 4 - Tiempo de expiración de tokens
 
-Primero se entró al `application.yml`, el cual tiene en la sección de blueprints la siguiente línea de código: 
-    token-ttl-seconds: 20
-
-esta se cambió por 20, que indica que el time-to-live del token pasó de ser de una hora a 2' segundos. 
+Primero se entró al `application.yml`, el cual tiene en la sección de blueprints la propiedad `token-ttl-seconds: 3600`. Su valor se cambió a `20`, con lo que el time-to-live del token pasó de una hora a 20 segundos.
 
 Después se entró a Swagger y con las credenciales establecidas en el laboratorio nos autenticamos: 
 
@@ -173,7 +181,7 @@ Este nos regresó la respuesta 200 junto con un token de verificación.
 
 ![Initial GET response](/src/docs/img/initial-get.png)
 
-Para confirmar que el tiempo del token es correcto, este token luego fue copiado y pegado en la página [jwt.io](https://www.jwt.io/), la cual procesó el token otorgado, y en la sección de JWT Encoder pudimos confirmar que efectivamente el tiempo de vida del token es de 20 segundos. 
+Para confirmar que el tiempo del token es correcto, este token luego fue copiado y pegado en la página [jwt.io](https://www.jwt.io/), la cual procesó el token otorgado, y en la sección de JWT Decoder pudimos confirmar que efectivamente el tiempo de vida del token es de 20 segundos. 
 
 ![jwt.io answer](/src/docs/img/jwt-io.png)
 
@@ -185,7 +193,7 @@ Después de esto, se ejecutó el GET /api/v1/blueprints, en donde obtenemos la s
 
 ![answer before 20 seconds](/src/docs/img/answer-before-20.png)
 
-Todo esto se realizó apenas nos autenticacmos con el access token en Swagger, antes de los 20 segundos. 
+Todo esto se realizó apenas nos autenticamos con el access token en Swagger, antes de los 20 segundos. 
 
 Pasados los 20 segundos, se volvió a ejecutar el GET /api/v1/blueprints, el cual nos devolvió el siguiente resultado:
 
@@ -197,7 +205,7 @@ Acá es posible observar que la razón de por qué ya no es válido el token acc
 error_description="An error occurred while attempting to decode the Jwt: Jwt expired at 2026-09-17T00:04:00Z"
 ```
 
-Para volver a los parámetros originales del tll, se volvió a cambiar el valor del tll del token en el `application.yml` a 3600. 
+Para volver a los parámetros originales del TTL, se volvió a cambiar el valor del TTL del token en el `application.yml` a 3600. 
 
 
 ### Actividad 5 - Documentación de Swagger con endpoints de autenticación y negocio 
@@ -212,7 +220,7 @@ Se usó @Tag para agrupar los endpoints entre "Autenticación" y "Blueprints", j
 
 Acá se cambió el endpoint /auth/login para que fuera un endpoint público (se le quitó el candado global de bearer-jwt), pues la idea es que los usuarios puedan hacer login sin necesidad de un access token; no tiene sentido autenticarse antes de loguearse. 
 
-Después de realizar esa modifcación en el código, se ven los siguientes cambios.
+Después de realizar esa modificación en el código, se ven los siguientes cambios.
 
 Antes del cambio en el controlador de autenticación: 
 
