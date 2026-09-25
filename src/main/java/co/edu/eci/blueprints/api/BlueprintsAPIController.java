@@ -4,6 +4,7 @@ import java.util.Set;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import co.edu.eci.blueprints.dto.ApiResponse;
 import co.edu.eci.blueprints.dto.NewBlueprintRequest;
+import co.edu.eci.blueprints.dto.UpdateBlueprintRequest;
 import co.edu.eci.blueprints.model.Blueprint;
 import co.edu.eci.blueprints.model.Point;
 import co.edu.eci.blueprints.persistence.BlueprintNotFoundException;
@@ -107,5 +109,33 @@ public class BlueprintsAPIController {
             throws BlueprintNotFoundException {
         services.addPoint(author, bpname, p.x(), p.y());
         return ApiResponse.accepted(services.getBlueprint(author, bpname));
+    }
+
+    @Operation(summary = "Reemplazar los puntos de un blueprint", description = "Requiere scope blueprints.write")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Blueprint actualizado"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Datos inválidos"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Blueprint no encontrado")
+    })
+    @PutMapping("/{author}/{bpname}")
+    @PreAuthorize("hasAuthority('SCOPE_blueprints.write')")
+    public ResponseEntity<ApiResponse<Blueprint>> update(
+            @PathVariable String author, @PathVariable String bpname,
+            @Valid @RequestBody UpdateBlueprintRequest req) throws BlueprintNotFoundException {
+        services.updatePoints(author, bpname, req.points());
+        return ApiResponse.ok(services.getBlueprint(author, bpname));
+    }
+
+    @Operation(summary = "Eliminar un blueprint", description = "Requiere scope blueprints.write")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Blueprint eliminado"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Blueprint no encontrado")
+    })
+    @DeleteMapping("/{author}/{bpname}")
+    @PreAuthorize("hasAuthority('SCOPE_blueprints.write')")
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable String author, @PathVariable String bpname)
+            throws BlueprintNotFoundException {
+        services.deleteBlueprint(author, bpname);
+        return ApiResponse.ok(null);
     }
 }
