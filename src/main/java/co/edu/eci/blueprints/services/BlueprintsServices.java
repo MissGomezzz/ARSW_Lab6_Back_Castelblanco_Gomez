@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 
+import co.edu.eci.blueprints.dto.AuthorBlueprints;
 import co.edu.eci.blueprints.filters.BlueprintsFilter;
 import co.edu.eci.blueprints.model.Blueprint;
 import co.edu.eci.blueprints.model.Point;
@@ -38,6 +39,19 @@ public class BlueprintsServices {
         return persistence.getBlueprintsByAuthor(author).stream()
                 .map(filter::apply)
                 .collect(Collectors.toSet());
+    }
+
+    /**
+     * Returns the (filtered) blueprints of an author together with the total number of points.
+     *
+     * @throws BlueprintNotFoundException if the author has no blueprints.
+     */
+    public AuthorBlueprints getAuthorBlueprints(String author) throws BlueprintNotFoundException {
+        Set<Blueprint> blueprints = getBlueprintsByAuthor(author);
+        int totalPoints = blueprints.stream()
+                .mapToInt(bp -> bp.getPoints().size())
+                .sum();
+        return new AuthorBlueprints(author, totalPoints, blueprints);
     }
 
     public Blueprint getBlueprint(String author, String name) throws BlueprintNotFoundException {

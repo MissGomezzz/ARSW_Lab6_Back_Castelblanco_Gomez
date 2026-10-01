@@ -6,6 +6,7 @@ import co.edu.eci.blueprints.model.Point;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -107,13 +108,12 @@ public class InMemoryBlueprintPersistence implements BlueprintPersistence {
     public void saveBlueprint(Blueprint bp) throws BlueprintPersistenceException {
         String k = keyOf(bp);
 
-        if (blueprints.containsKey(k)) {
+        // putIfAbsent makes the existence check and the insert a single atomic step.
+        if (blueprints.putIfAbsent(k, bp) != null) {
             throw new BlueprintPersistenceException(
                     "Blueprint already exists: " + k
             );
         }
-
-        blueprints.put(k, bp);
     }
 
     @Override
@@ -157,8 +157,21 @@ public class InMemoryBlueprintPersistence implements BlueprintPersistence {
     public void addPoint(String author, String name, int x, int y)
             throws BlueprintNotFoundException {
 
-        Blueprint bp = getBlueprint(author, name);
-        bp.addPoint(new Point(x, y));
+        Point point = new Point(x, y);
+        // Atomic copy-on-write: stored Blueprint instances are never mutated, so concurrent
+        // readers always see a consistent snapshot and concurrent writers never lose points.
+        Blueprint updated = blueprints.computeIfPresent(keyOf(author, name), (k, current) -> {
+            List<Point> points = new ArrayList<>(current.getPoints().size() + 1);
+            points.addAll(current.getPoints());
+            points.add(point);
+            return new Blueprint(current.getAuthor(), current.getName(), points);
+        });
+
+        if (updated == null) {
+            throw new BlueprintNotFoundException(
+                    "Blueprint not found: %s/%s".formatted(author, name)
+            );
+        }
     }
 
     @Override

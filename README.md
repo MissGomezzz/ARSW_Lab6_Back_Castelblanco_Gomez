@@ -86,6 +86,83 @@ Content-Type: application/json
 }
 ```
 
+### 4. Blueprints de un autor con total de puntos (requiere scope `blueprints.read`)
+```
+GET http://localhost:8080/api/v1/blueprints?author=john
+Authorization: Bearer <ACCESS_TOKEN>
+```
+Respuesta (`404` si el autor no tiene planos):
+```json
+{ "code": 200, "message": "execute ok",
+  "data": { "author": "john", "totalPoints": 11, "blueprints": [ ... ] } }
+```
+
+Resto del CRUD: `GET /api/v1/blueprints/{author}/{name}`, `PUT /api/v1/blueprints/{author}/{name}`
+(reemplaza puntos), `PUT /api/v1/blueprints/{author}/{name}/points` (agrega un punto `{x,y}`, ambos `>= 0`)
+y `DELETE /api/v1/blueprints/{author}/{name}`.
+
+---
+
+## Tiempo real (STOMP)
+
+Colaboración en vivo sobre STOMP con WebSocket nativo (sin SockJS).
+
+| Elemento | Valor |
+|---|---|
+| Endpoint WebSocket | `ws://localhost:8080/ws-blueprints` |
+| Prefijo de aplicación (cliente → servidor) | `/app` (publicar en `/app/draw`) |
+| Broker simple | `/topic`, `/queue` |
+| Prefijo de usuario | `/user` |
+| Tópico por plano | `/topic/blueprints.{author}.{name}` (ej. `/topic/blueprints.john.house`) |
+| Cola de errores (solo el emisor) | `/user/queue/errors` |
+
+**Autenticación en CONNECT.** El handshake HTTP es público, pero el frame `CONNECT` debe incluir el
+header nativo `Authorization: Bearer <ACCESS_TOKEN>` (el mismo JWT de `/auth/login`). Sin token o con
+token inválido el servidor responde `ERROR` y cierra la sesión. Publicar en `/app/draw` exige el scope
+`blueprints.write`.
+
+**Payload de entrada** (`SEND /app/draw`, `DrawEvent`):
+```json
+{ "author": "john", "name": "house", "point": { "x": 10, "y": 20 }, "clientId": "tab-123" }
+```
+`author` y `name` obligatorios, `point` obligatorio con `x, y >= 0`; `clientId` es opcional.
+El punto se persiste (igual que `PUT .../points`) y luego se difunde.
+
+**Payload de salida** (`/topic/blueprints.{author}.{name}`, `BlueprintUpdate`):
+```json
+{ "author": "john", "name": "house", "points": [ { "x": 10, "y": 20 } ], "clientId": "tab-123" }
+```
+`points` contiene solo los puntos nuevos (mismo formato que la guía de Socket.IO). El emisor puede
+ignorar su propio eco comparando `clientId`.
+
+**Errores** (validación o plano inexistente) llegan solo al emisor en `/user/queue/errors`:
+```json
+{ "message": "point.x: x must be >= 0" }
+```
+
+Ejemplo con `@stomp/stompjs`:
+```js
+const client = new Client({
+  brokerURL: 'ws://localhost:8080/ws-blueprints',
+  connectHeaders: { Authorization: `Bearer ${token}` },
+  onConnect: () => {
+    client.subscribe(`/topic/blueprints.${author}.${name}`, (m) => { /* append JSON.parse(m.body).points */ })
+    client.subscribe('/user/queue/errors', (m) => console.warn(JSON.parse(m.body).message))
+  },
+})
+client.activate()
+client.publish({ destination: '/app/draw', body: JSON.stringify({ author, name, point: { x, y }, clientId }) })
+```
+
+**Configuración.** Los orígenes permitidos (CORS REST y handshake WebSocket) salen de
+`blueprints.cors.allowed-origins` en `application.yml` (por defecto `http://localhost:5173`). En
+producción deben restringirse al origen real del front, p. ej. con la variable de entorno
+`BLUEPRINTS_CORS_ALLOWED_ORIGINS=https://mi-front.example.com`.
+
+**Observabilidad.** Se registran (SLF4J) las escrituras REST, cada evento de dibujo y el ciclo de vida
+de las sesiones STOMP (connect, subscribe, unsubscribe, disconnect). Health check público en
+`GET /actuator/health` (e info en `GET /actuator/info`).
+
 ---
 
 ## Swagger UI

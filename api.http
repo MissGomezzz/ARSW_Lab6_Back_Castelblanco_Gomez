@@ -11,6 +11,10 @@ Content-Type: application/json
 GET http://localhost:8080/api/v1/blueprints
 Authorization: Bearer {{access_token}}
 
+### Blueprints por autor con total de puntos (scope blueprints.read)
+GET http://localhost:8080/api/v1/blueprints?author=john
+Authorization: Bearer {{access_token}}
+
 ### Blueprints por autor (scope blueprints.read)
 GET http://localhost:8080/api/v1/blueprints/john
 Authorization: Bearer {{access_token}}

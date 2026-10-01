@@ -2,6 +2,8 @@ package co.edu.eci.blueprints.api;
 
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -11,9 +13,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import co.edu.eci.blueprints.dto.ApiResponse;
+import co.edu.eci.blueprints.dto.AuthorBlueprints;
 import co.edu.eci.blueprints.dto.NewBlueprintRequest;
 import co.edu.eci.blueprints.dto.UpdateBlueprintRequest;
 import co.edu.eci.blueprints.model.Blueprint;
@@ -42,6 +46,8 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/v1/blueprints")
 public class BlueprintsAPIController {
 
+    private static final Logger log = LoggerFactory.getLogger(BlueprintsAPIController.class);
+
     private final BlueprintsServices services;
 
     public BlueprintsAPIController(BlueprintsServices services) { this.services = services; }
@@ -56,6 +62,19 @@ public class BlueprintsAPIController {
     @PreAuthorize("hasAuthority('SCOPE_blueprints.read')")
     public ResponseEntity<ApiResponse<Set<Blueprint>>> getAll() {
         return ApiResponse.ok(services.getAllBlueprints());
+    }
+
+    @Operation(summary = "Obtener blueprints de un autor con su total de puntos",
+            description = "GET /api/v1/blueprints?author={author}. Requiere scope blueprints.read")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Consulta exitosa"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Autor sin blueprints")
+    })
+    @GetMapping(params = "author")
+    @PreAuthorize("hasAuthority('SCOPE_blueprints.read')")
+    public ResponseEntity<ApiResponse<AuthorBlueprints>> byAuthorWithTotal(@RequestParam String author)
+            throws BlueprintNotFoundException {
+        return ApiResponse.ok(services.getAuthorBlueprints(author));
     }
 
     @Operation(summary = "Obtener blueprints de un autor", description = "Requiere scope blueprints.read")
@@ -94,6 +113,7 @@ public class BlueprintsAPIController {
             throws BlueprintPersistenceException {
         Blueprint bp = new Blueprint(req.author(), req.name(), req.points());
         services.addNewBlueprint(bp);
+        log.info("Blueprint created: {}/{} ({} points)", bp.getAuthor(), bp.getName(), bp.getPoints().size());
         return ApiResponse.created(bp);
     }
 
@@ -105,9 +125,10 @@ public class BlueprintsAPIController {
     @PutMapping("/{author}/{bpname}/points")
     @PreAuthorize("hasAuthority('SCOPE_blueprints.write')")
     public ResponseEntity<ApiResponse<Blueprint>> addPoint(
-            @PathVariable String author, @PathVariable String bpname, @RequestBody Point p)
+            @PathVariable String author, @PathVariable String bpname, @Valid @RequestBody Point p)
             throws BlueprintNotFoundException {
         services.addPoint(author, bpname, p.x(), p.y());
+        log.info("Point added via REST: {}/{} -> ({}, {})", author, bpname, p.x(), p.y());
         return ApiResponse.accepted(services.getBlueprint(author, bpname));
     }
 
@@ -123,6 +144,7 @@ public class BlueprintsAPIController {
             @PathVariable String author, @PathVariable String bpname,
             @Valid @RequestBody UpdateBlueprintRequest req) throws BlueprintNotFoundException {
         services.updatePoints(author, bpname, req.points());
+        log.info("Blueprint updated: {}/{} ({} points)", author, bpname, req.points().size());
         return ApiResponse.ok(services.getBlueprint(author, bpname));
     }
 
@@ -136,6 +158,7 @@ public class BlueprintsAPIController {
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable String author, @PathVariable String bpname)
             throws BlueprintNotFoundException {
         services.deleteBlueprint(author, bpname);
+        log.info("Blueprint deleted: {}/{}", author, bpname);
         return ApiResponse.ok(null);
     }
 }
