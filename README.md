@@ -1,11 +1,18 @@
-# Escuela Colombiana de Ingeniería Julio Garavito
-## Arquitectura de Software – ARSW
-### Laboratorio – Parte 2: BluePrints API con Seguridad JWT (OAuth 2.0)
+## Laboratorio 6 - Blueprints Real Time Sockets
 
-## Autores
+## Nota 
+La documentación y video del laboratorio 6 se encuentra en este mismo repositorio, al final del README.  
+
+Para realizar este laboratorio, se realizó un fork del laboratorio 4 (backend), y un fork del laboratorio 5 (fontend). Es decir, la solución del laboratorio 6 se maneja en los dos repositorios mencionados. 
+
+- BACKEND: este mismo repositorio
+
+- [FRONTEND](https://github.com/Queruubin/Lab6_Front_Castelblanco_Gomez)
+
+## Autores:
+
 - Samuel Castelblanco 
 - Ángela Gómez
-
 ---
 
 Este laboratorio extiende la **Parte 1** ([Lab_P1_BluePrints_Java21_API](https://github.com/DECSIS-ECI/Lab_P1_BluePrints_Java21_API)) agregando **seguridad a la API** usando **Spring Boot 3, Java 21 y JWT (OAuth 2.0)**.  
@@ -308,5 +315,156 @@ Después del cambio en el controlador de autenticación:
 ![after-change-lock](/src/docs/img/auth-login.without-lock.png)
 
 Acá se evidencia como el endpoint /auth/login ahora es público, a diferencia de los demás endpoints que sí muestran un candado al lado. 
+
+---
+
+## RESPUESTAS LABORATORIO 6 BluePrints en Tiempo Real
+
+
+**Repos del equipo**
+- Front (React + Vite): https://github.com/Queruubin/Lab6_Front_Castelblanco_Gomez
+- Back (Spring Boot, CRUD + JWT + STOMP): https://github.com/MissGomezzz/ARSW_Lab6_Back_Castelblanco_Gomez
+- Video demo (≤ 90 s): [Video One Drive](https://pruebacorreoescuelaingeduco-my.sharepoint.com/:v:/g/personal/angela_gomez-v_mail_escuelaing_edu_co/IQB-SbokG-VKTKi9JMC4ttx8AVoUHK7eSCKMxR_6Wn3pUpA?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=PAKZIL)
+- Video observabilidad en inspección de la página: [Video One Drive 20 seg](https://pruebacorreoescuelaingeduco-my.sharepoint.com/:v:/g/personal/angela_gomez-v_mail_escuelaing_edu_co/IQA3WzXinxcsSLMSRZHeDwOQAWUtdVtZEc0LqvpwfWPdxwY?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=D03KcZ)
+
+**Autores:** 
+
+- Samuel Castelblanco
+- Ángela Gómez
+
+### 1. Arquitectura
+
+```
+React (Vite) :5173
+ ├─ HTTP (REST CRUD + estado inicial, JWT Bearer) ──> Spring Boot :8080  (/api/v1, /auth/login)
+ └─ Tiempo real (selector Ninguno / Socket.IO / STOMP):
+     ├─ STOMP: /app/draw -> /topic/blueprints.{author}.{name} ──> Spring WebSocket (/ws-blueprints)
+     └─ Socket.IO: join-room / draw-event -> blueprint-update ──> Servidor Node guía :3001
+```
+
+El backend propio implementa **STOMP** (con persistencia y seguridad JWT). Para **Socket.IO** el Front se conecta al servidor Node del repo guía
+(`DECSIS-ECI/example-backend-socketio-node-`), de modo que el selector permite comparar ambas tecnologías sobre el mismo canvas.
+
+### 2. Puesta en marcha
+
+**Backend (Spring Boot, Java 21, Maven)**
+```bash
+git clone https://github.com/MissGomezzz/ARSW_Lab6_Back_Castelblanco_Gomez
+cd ARSW_Lab6_Back_Castelblanco_Gomez
+mvn -q -DskipTests spring-boot:run      # http://localhost:8080
+```
+
+**(Opcional) Servidor Socket.IO guía**
+```bash
+git clone https://github.com/DECSIS-ECI/example-backend-socketio-node-
+cd example-backend-socketio-node-
+npm i && npm run dev                    # http://localhost:3001
+```
+
+**Front**
+```bash
+git clone https://github.com/Queruubin/Lab6_Front_Castelblanco_Gomez
+cd Lab6_Front_Castelblanco_Gomez
+npm install
+cp .env.example .env
+npm run dev                             # http://localhost:5173
+```
+
+**Todo con Docker:** `docker compose up --build` (front en `:5173`, back en `:8080`).
+**Credenciales de prueba:** `student` / `student123`.
+
+**Variables de entorno (Front)**
+
+| Variable | Valor típico | Uso |
+|---|---|---|
+| `VITE_USE_MOCK` | `false` | `true` = apiMock, `false` = apiClient (API real) |
+| `VITE_API_BASE_URL` | *(vacío)* | vacío = proxy de Vite (sin CORS) |
+| `VITE_BACKEND_URL` | `http://localhost:8080` | destino del proxy `/api`, `/auth`, `/ws-blueprints` |
+| `VITE_STOMP_BASE` | *(vacío)* | origen STOMP; vacío = mismo origen vía proxy |
+| `VITE_IO_BASE` | `http://localhost:3001` | servidor Socket.IO |
+
+### 3. Endpoints usados
+
+**REST** (todos los `/api/v1` requieren `Authorization: Bearer <JWT>`; respuestas en `{ code, message, data }`)
+
+| Método | Ruta | Uso en el Front | Scope |
+|---|---|---|---|
+| POST | `/auth/login` | Login, obtiene `access_token` | público |
+| GET | `/api/v1/blueprints?author=:a` | Tabla del autor + total de puntos | `blueprints.read` |
+| GET | `/api/v1/blueprints/:author/:name` | Estado inicial del canvas (botón Open) | `blueprints.read` |
+| POST | `/api/v1/blueprints` | Create | `blueprints.write` |
+| PUT | `/api/v1/blueprints/:author/:name` | Save/Update (reemplaza puntos) | `blueprints.write` |
+| PUT | `/api/v1/blueprints/:author/:name/points` | Agregar un punto (lo usa STOMP al persistir) | `blueprints.write` |
+| DELETE | `/api/v1/blueprints/:author/:name` | Delete | `blueprints.write` |
+
+> Diferencia con el enunciado: nuestras rutas llevan el prefijo `/api/v1` y están protegidas con JWT (Lab 4).
+
+**Tiempo real**
+
+| Tecnología | Conexión | Unirse | Enviar | Recibir |
+|---|---|---|---|---|
+| STOMP | `ws://localhost:8080/ws-blueprints` (WebSocket nativo, `Authorization: Bearer` en CONNECT) | `SUBSCRIBE /topic/blueprints.{author}.{name}` | `SEND /app/draw` `{author,name,point,clientId}` | `{author,name,points,clientId}`; errores en `/user/queue/errors` |
+| Socket.IO | `io(VITE_IO_BASE, {transports:['websocket']})` | `join-room` `blueprints.{author}.{name}` | `draw-event` `{room,author,name,point,clientId}` | `blueprint-update` `{author,name,points}` |
+
+### 4. Decisiones de diseño
+
+- **Un plano = un canal/sala:** `blueprints.{author}.{name}`. Solo reciben los puntos quienes están en el mismo plano (aislamiento por plano).
+- **Payload de punto** `{x, y}` con validación en el servidor (`x, y >= 0`, `author` y `name` obligatorios).
+- **Eco propio:** cada pestaña genera un `clientId` (`crypto.randomUUID`) y descarta los mensajes que ella misma emitió, para no duplicar puntos.
+- **Persistencia:** con STOMP el servidor guarda cada punto; con Socket.IO no persiste, así que se usa **Guardar** (PUT).
+- **Seguridad:** el handshake es público pero el frame CONNECT exige JWT; publicar en `/app/draw` exige `blueprints.write`. Los orígenes permitidos salen de `blueprints.cors.allowed-origins`.
+- **Reconexión:** STOMP reintenta cada 2 s, se resuscribe y recarga los puntos con `GET` para cubrir lo perdido durante la caída; Socket.IO vuelve a hacer `join-room`.
+- **UX del selector:** deshabilitado al crear un plano nuevo (primero se guarda); la elección se recuerda en `localStorage`; indicador de estado Conectando / Conectado / Reconectando / Error.
+- **Deshacer / Limpiar** son locales; solo Guardar persiste el estado completo.
+
+### 5. Casos de prueba mínimos (evidencia)
+
+| Caso | Cómo se verifica | 
+|---|---
+| Estado inicial | Open en un plano → el canvas carga los puntos del `GET` | 
+| Dibujo local | Clic en el canvas agrega punto y redibuja | 
+| RT multi-pestaña | 2 pestañas, mismo plano y misma tecnología → los puntos se replican |
+| Aislamiento | Pestaña B en otro plano **no** recibe los puntos de A |
+| CRUD | Create / Save / Delete refrescan la lista y el **Total** del autor | 
+| Pruebas automáticas | `npm test` en verde + CI en GitHub Actions | 
+
+### 6. Observabilidad
+
+- **Back (SLF4J):** escrituras REST, cada evento de dibujo y el ciclo de vida de sesiones STOMP (connect, subscribe, unsubscribe, disconnect).
+- **Health check:** `GET /actuator/health` (público) y `GET /actuator/info`.
+- **Front:** la consola del navegador muestra los eventos `[rt:stomp]` y `[rt:socketio]`.
+- Para mostrar la observabilidad de forma más clara y directa, se realizó un video de 20 segundos mostrando los resultados al inspeccionar la página cuando los usuarios dibujan blueprints. 
+Video disponible [aquí](https://pruebacorreoescuelaingeduco-my.sharepoint.com/:v:/g/personal/angela_gomez-v_mail_escuelaing_edu_co/IQA3WzXinxcsSLMSRZHeDwOQAWUtdVtZEc0LqvpwfWPdxwY?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=D03KcZ). 
+
+
+### 7. Comparativa Socket.IO vs STOMP
+
+| Aspecto | Socket.IO (Node) | STOMP (Spring) |
+|---|---|---|
+| Modelo | Eventos y *rooms* propios (`join-room`, `draw-event`) | Protocolo de mensajería sobre WebSocket (destinos `/app`, `/topic`) |
+| Aislamiento por plano | Room manual | Tópico por plano, nativo del broker |
+| Seguridad | En nuestra integración el cliente no envía JWT al conectar | JWT validado en CONNECT + scope en `/app/draw` |
+| Persistencia | No persiste (requiere Guardar) | El servidor persiste cada punto |
+| Reconexión | Automática del cliente; hay que volver a hacer `join-room` | Reintento cada 2 s + resuscripción + `GET` para resincronizar |
+| Integración con el backend | Servidor aparte (Node, puerto 3001) | Mismo servidor y misma seguridad que el CRUD |
+| Errores | `connect_error` | Frames `ERROR` y `/user/queue/errors` |
+
+### 8. Hallazgos (latencia y reconexión)
+
+<!-- TODO: completar con mediciones reales, por ejemplo:
+- Latencia aproximada entre dibujar en la pestaña A y ver el punto en la B (STOMP vs Socket.IO).
+- Qué pasó al apagar y volver a encender el backend con las pestañas abiertas.
+- Qué pasó al expirar el JWT con la conexión STOMP abierta.
+- Qué pasó con puntos dibujados mientras una pestaña estaba desconectada. -->
+
+### 9. Troubleshooting
+
+- **No hay broadcast:** ambas pestañas deben estar en el **mismo** plano y con la **misma** tecnología.
+- **Error 401 / CONNECT rechazado:** falta iniciar sesión o el token expiró; volver a hacer login.
+- **CORS:** permitir `http://localhost:5173` en `blueprints.cors.allowed-origins` o usar el proxy de Vite con `VITE_API_BASE_URL` vacío.
+- **Socket.IO no conecta:** confirmar que el servidor Node está en `:3001` y `VITE_IO_BASE` apunta a él.
+- **STOMP no recibe:** revisar la ruta `/ws-blueprints` y los prefijos `/app` y `/topic`.
+- **Datos viejos con Docker:** `docker compose down -v` para recrear el volumen de PostgreSQL.
+
 
 ---
